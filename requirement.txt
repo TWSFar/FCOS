@@ -1,0 +1,4 @@
+fire
+pycocotools
+tensorboardX
+opencv-python
