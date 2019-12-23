@@ -24,7 +24,7 @@ class Config:
         hrnet_cfg = user_dir + '/work/RetinaNet/lib/hrnet_config/hrnet_w48.yaml'
 
     # train
-    batch_size = 4
+    batch_size = 1
     epochs = 70
     workers = 1
 

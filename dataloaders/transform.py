@@ -110,7 +110,7 @@ class Letterbox(object):
 
         image = torch.from_numpy(new_image)
         annots = torch.from_numpy(annots)
-        return {'img': image, 'annot': annots, 'scale': None}
+        return {'img': image, 'annot': annots, 'scale': (ratio, left, top)}
 
 
 class Augmenter(object):

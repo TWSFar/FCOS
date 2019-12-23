@@ -274,3 +274,29 @@ class DefaultEval(object):
         f1 = 2 * p * r / (p + r + 1e-16)
 
         return p, r, ap, f1, unique_classes.astype('int32')
+
+def re_resize(pre_bboxes, scale, resize_type):
+    """
+    args:
+        resize_type:
+            irregular
+            regular
+            letterbox
+        pre_bboxes:
+            tenosr, shape[n, 4]
+        scale:
+            ....
+    """
+    # correct boxes for image scale
+    if resize_type == "irregular":
+        pre_bboxes = pre_bboxes / scale[jj]
+    elif resize_type == "regular":
+        pre_bboxes[:, [0, 2]] = pre_bboxes[:, [0, 2]] / scale[0]
+        pre_bboxes[:, [1, 3]] = pre_bboxes[:, [1, 3]] / scale[1]
+    elif resize_type == "letterbox":
+        pre_bboxes[:, 0] = pre_bboxes[:, 0] / scale[0] - scale[1]
+        pre_bboxes[:, 1] = pre_bboxes[:, 1] / scale[0] - scale[2]
+        pre_bboxes[:, 2] = pre_bboxes[:, 2] / scale[0] - scale[1]
+        pre_bboxes[:, 3] = pre_bboxes[:, 3] / scale[0] - scale[2]
+
+    return pre_bboxes

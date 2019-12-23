@@ -19,6 +19,7 @@ class FCOS(nn.Module):
         self.cls_model = ClassificationModel(num_features_in=256,
                                              num_classes=num_classes)
         self.anchor = anchors.Anchors()
+        # self._center_xy, self._tlbr_max_minmax, self._center_offset_max = anchors.gen_anchors(opt.max_size)
 
         self.losses = losses.Losses()
 
@@ -41,6 +42,10 @@ class FCOS(nn.Module):
         cls_out = torch.cat([self.cls_model(feature) for feature in features], dim=1)
         # generate anchors
         _center_xy, _tlbr_max_minmax, _center_offset_max = self.anchor(img_batch)
+        # device = img_batch.device
+        # _center_xy = self._center_xy.to(device)
+        # _tlbr_max_minmax = self._tlbr_max_minmax.to(device)
+        # _center_offset_max = self._center_offset_max.to(device)
 
         if self.training:
             targets_cls, targets_reg = self._encode(annotations,

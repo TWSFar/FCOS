@@ -13,7 +13,7 @@ from configs.fcos_res50_visdrone import opt
 from models.fcos import FCOS
 
 from dataloaders import make_data_loader
-from models.utils.functions import PostProcess, DefaultEval
+from models.utils.functions import PostProcess, DefaultEval, re_resize
 from utils.visualization import TensorboardSummary
 from utils.saver import Saver
 from utils.timer import Timer
@@ -200,7 +200,7 @@ class Trainer(object):
 
                         if pre_bboxes.shape[0] > 0:
                             # correct boxes for image scale
-                            pre_bboxes = pre_bboxes / scale[jj]
+                            re_resize(pre_bboxes, scale, opt.resize_type)
 
                             # change to (x, y, w, h) (MS COCO standard)
                             pre_bboxes[:, 2] -= pre_bboxes[:, 0]
