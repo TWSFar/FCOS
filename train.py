@@ -294,7 +294,7 @@ class Trainer(object):
 
 def eval(**kwargs):
     opt._parse(kwargs)
-    evaler = Trainer("eval")
+    evaler = Trainer("val")
     print('Num evaluating images: {}'.format(len(evaler.val_dataset)))
 
     evaler.validate(evaler.start_epoch)
