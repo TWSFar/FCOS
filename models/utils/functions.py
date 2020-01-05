@@ -19,6 +19,7 @@ class BBoxTransform(nn.Module):
 
     def forward(self, boxes, deltas):
         device = boxes.device
+        boxes = boxes.unsqueeze(0)
         self.mean = self.mean.to(device)
         self.std = self.std.to(device)
 
@@ -49,12 +50,11 @@ class BBoxTransform(nn.Module):
 
 class ClipBoxes(nn.Module):
 
-    def __init__(self, width=None, height=None):
+    def __init__(self):
         super(ClipBoxes, self).__init__()
 
-    def forward(self, boxes, img):
-
-        batch_size, num_channels, height, width = img.shape
+    def forward(self, boxes, img_shape):
+        height, width = img_shape
 
         boxes[:, :, 0] = torch.clamp(boxes[:, :, 0], min=0)
         boxes[:, :, 1] = torch.clamp(boxes[:, :, 1], min=0)
@@ -75,6 +75,7 @@ class PostProcess(object):
         self.pst_thd = pst_thd
         self.n_pre_nms = n_pre_nms
         self.nms_thd = nms_thd
+        self.clipBoxes = ClipBoxes()
         self.scr = torch.zeros(0)
         self.lab = torch.zeros(0)
         self.box = torch.zeros(0, 4)
@@ -116,7 +117,8 @@ class PostProcess(object):
     """
 
     # """ method 2: per category use nms along
-    def __call__(self, scores_bt, labels_bt, boxes_bt):
+    def __call__(self, scores_bt, labels_bt, boxes_bt, img_shape):
+        boxes_bt = self.clipBoxes(boxes_bt, img_shape)
         scores_list = []
         labels_list = []
         boxes_list = []

@@ -9,7 +9,7 @@ class Saver(object):
 
     def __init__(self, opt, mode='train'):
         self.opt = opt
-        self.directory = osp.join('run', opt.dataset)
+        self.directory = osp.join('run', opt.model + "_" + opt.dataset)
         self.experiment_name = time.strftime("%Y%m%d_%H%M%S") + '_' + mode
         self.experiment_dir = osp.join(self.directory, self.experiment_name)
         self.logfile = osp.join(self.experiment_dir, 'experiment.log')

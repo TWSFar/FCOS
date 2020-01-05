@@ -7,10 +7,11 @@ import numpy as np
 
 # from models_demo import model_demo
 
-from configs.fcos_res50_visdrone import opt
+# from configs.fcos_res50_visdrone import opt
 # from configs.visdrone_chip import opt
 # from configs.visdrone_samples import opt
 # from configs.coco import opt
+from configs.retina_visdrone import opt
 
 from dataloaders import make_data_loader
 from models import Model
@@ -122,7 +123,7 @@ class Trainer(object):
                 global_step = iter_num + self.nbatch_train * epoch + 1
                 loss_logs = ""
                 for _key, _value in log_vars.items():
-                    loss_logs += "{}: {:.4f}, ".format(_key, _value)
+                    loss_logs += "{}: {:.4f}  ".format(_key, _value)
                     self.writer.add_scalar('train/{}'.format(_key),
                                            _value,
                                            global_step)
@@ -132,8 +133,8 @@ class Trainer(object):
                 self.step_time.append(batch_time)
                 if global_step % opt.print_freq == 0:
                     printline = ("Epoch: [{}][{}/{}]  "
-                                 "lr: {}, eta: {}, time: {:1.3f}, "
-                                 "{},"
+                                 "lr: {}  eta: {}  time: {:1.3f}  "
+                                 "{}"
                                  "Running loss: {:1.5f}").format(
                                     epoch, iter_num + 1, self.nbatch_train,
                                     self.optimizer.param_groups[0]['lr'],
@@ -157,7 +158,7 @@ class Trainer(object):
             results = []
             image_ids = []
             for ii, data in enumerate(self.val_loader):
-                # if ii > 200: break
+                # if ii > 2: break
                 scale = data['scale']
                 index = data['index']
                 imgs = data['img'].to(opt.device).float()
@@ -166,7 +167,8 @@ class Trainer(object):
                 # run network
                 scores, labels, boxes = self.model(imgs)
 
-                scores_bt, labels_bt, boxes_bt = self.post_pro(scores, labels, boxes)
+                scores_bt, labels_bt, boxes_bt = self.post_pro(
+                    scores, labels, boxes, imgs.shape[-2:])
 
                 outputs = []
                 for k in range(len(boxes_bt)):

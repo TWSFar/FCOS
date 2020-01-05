@@ -72,7 +72,11 @@ class Anchors(object):
                                                        dtype=dtype,
                                                        device=device))
 
-        return all_level_anchors, all_level_restrictions
+        return torch.cat(all_level_anchors), \
+            torch.cat(all_level_restrictions)
+
+    def __len__(self):
+        return len(self.scales) * len(self.ratios)
 
     def generate_anchors(self, base_size=16):
         """

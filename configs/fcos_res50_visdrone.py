@@ -18,6 +18,7 @@ class Config:
     pre = None
 
     # model
+    model = "fcos"
     backbone = 'resnet50'
     neck = "fpn"
     head = dict(

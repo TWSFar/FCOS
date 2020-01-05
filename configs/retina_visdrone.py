@@ -1,5 +1,4 @@
 import os
-import time
 from pprint import pprint
 from utils.devices import select_device
 user_dir = os.path.expanduser('~')
@@ -7,38 +6,40 @@ user_dir = os.path.expanduser('~')
 
 class Config:
     # data
-    dataset = "coco"
-    root_dir = user_dir + "/work/RetinaNet/data/COCO"
-    resume = False
+    dataset = "visdrone"
+    root_dir = user_dir + "/data/Visdrone"
     resize_type = "letterbox"  # [regular, irregular, letterbox]
     min_size = 1024
     max_size = 1024
-    pre = '/home/twsf/work/RetinaNet/run/visdrone_chip/20191123_115838/model_best.pth.tar'
+    mean = [0.373, 0.378, 0.365]
+    std = [0.192, 0.183, 0.194]
+    resume = False
+    pre = None
 
     # model
-    model = "fcos"
+    model = "retina"
     backbone = 'resnet50'
-    strides = [8, 16, 32, 64, 128]
+    neck = "fpn"
     # head
     head = dict(
-        type="FCOSHead",
+        type="RetinaHead",
         strides=[8, 16, 32, 64, 128],
         loss_cls=dict(
             type='FocalLoss',
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
+            reduction='mean',
             loss_weight=1.0),
-        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
-        loss_centerness=dict(
-            type='CrossEntropyLoss',
-            use_sigmoid=True,
-            loss_weight=1.0))
+        loss_bbox=dict(
+            type='CIoULoss')
+    )
 
     # train
-    batch_size = 2
-    epochs = 40
+    batch_size = 3
+    epochs = 70
     workers = 1
+    freeze_bn = True
 
     # optimizer
     adam = True
@@ -46,10 +47,10 @@ class Config:
     momentum = 0.9
     decay = 5*1e-4
     steps = [0.8, 0.9]
-    gamma = 0.3
+    scales = 0.3
 
     # eval
-    eval_type = "default"
+    eval_type = "default"  # [cocoeval, default]
     nms = dict(
         type="GreedyNms",  # SoftNms
         pst_thd=0.2,
@@ -58,12 +59,11 @@ class Config:
     )
 
     # visual
-    visualize = True
-    print_freq = 50
-    plot_every = 200  # every n batch plot
+    print_freq = 10
+    plot_every = 50  # every n batch plot
     saver_freq = 1
 
-    seed = int(time.time())
+    seed = 1
 
     def _parse(self, kwargs):
         state_dict = self._state_dict()

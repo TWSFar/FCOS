@@ -2,10 +2,7 @@ import math
 import torch
 import torch.nn as nn
 from ..losses import build_loss
-from ..utils import (Anchors, BBoxTransform,
-                     ClipBoxes, iou_cpu)
-
-INF = 1e8
+from ..utils import (Anchors, BBoxTransform, iou_cpu)
 
 # from models.losses.debug import FocalLoss
 
@@ -26,8 +23,8 @@ class RetinaHead(nn.Module):
         super(RetinaHead, self).__init__()
         self.nclass = nclass
         self.anchors = Anchors(strides=strides)
+        self.nanchor = len(self.anchors)
         self.regressBoxes = BBoxTransform()
-        self.clipBoxes = ClipBoxes()
 
         self.reg_convs = nn.Sequential(
             nn.Conv2d(in_channels, feat_channels, kernel_size=3, padding=1),
@@ -48,11 +45,13 @@ class RetinaHead(nn.Module):
             nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
             nn.ReLU())
 
-        self.retina_cls = nn.Conv2d(feat_channels, 9*4, kernel_size=3, padding=1)
-        self.retina_reg = nn.Conv2d(feat_channels, 9*self.nclass, kernel_size=3, padding=1)
+        self.retina_cls = nn.Conv2d(
+            feat_channels, self.nanchor*self.nclass, kernel_size=3, padding=1)
+        self.retina_reg = nn.Conv2d(
+            feat_channels, self.nanchor*4, kernel_size=3, padding=1)
 
-        self.cls_loss = build_loss(loss_cls)
-        self.reg_loss = build_loss(loss_bbox)
+        self.loss_cls = build_loss(loss_cls)
+        self.loss_bbox = build_loss(loss_bbox)
 
         self.init_weights()
 
@@ -69,59 +68,75 @@ class RetinaHead(nn.Module):
     def forward(self, inputs, annotations=None):
         device = inputs[0].device
         num_imgs = inputs[0].size(0)
-        tensor_zero = torch.tensor(0).float().to(device)
 
         cls_feats = [self.cls_convs(featmap) for featmap in inputs]
         cls_scores = [self.retina_cls(featmap) for featmap in cls_feats]
         reg_feats = [self.reg_convs(featmap) for featmap in inputs]
-        bbox_preds = [self.retina_reg(featmap) for featmap in reg_feats]
-
+        reg_preds = [self.retina_reg(featmap) for featmap in reg_feats]
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
-        all_level_anchors, all_level_resticts = self.anchors(
-            featmap_sizes, dtype=bbox_preds[0].dtype, device=device)
+        anchors, resticts = self.anchors(
+            featmap_sizes, dtype=reg_preds[0].dtype, device=device)
+
+        batchs_cls_scores = torch.cat([
+            cls_score.permute(0, 2, 3, 1).reshape(
+                num_imgs, -1, self.nclass*self.nanchor)
+            for cls_score in cls_scores], dim=1)
+        batchs_reg_preds = torch.cat([
+            reg_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 4*self.nanchor)
+            for reg_pred in reg_preds], dim=1)
 
         if self.training:
             # return self.loss(pred_cls, pred_reg, anchors[0], annotations)
-            loss_cls, loss_reg = [], []
+            labels_list, bbox_targets_list = self.retina_target(
+                annotations, anchors, resticts, device)
+            batchs_labels = torch.cat(labels_list)
+            pos_inds = (batchs_labels > 0).max(dim=1)[0]
+            batchs_bbox_targets = torch.cat(bbox_targets_list)
+            batchs_anchors = anchors.repeat(num_imgs, 1)
 
-            for bi in range(num_imgs):
-                annotation = annotations[bi]
-                annotation = annotation[annotation[:, 4] != -1]
-                if annotation.shape[0] == 0:
-                    loss_cls.append(tensor_zero)
-                    loss_reg.append(tensor_zero)
-                    continue
+            num_pos = pos_inds.sum()
 
-                target_cls, target_bbox, pst_idx = self._encode(anchors[0],
-                                                                annotation,
-                                                                resticts[0])
-                if pst_idx.sum() == 0:
-                    loss_cls.append(tensor_zero)
-                    loss_reg.append(tensor_zero)
-                    continue
+            loss_cls = self.loss_cls(
+                batchs_cls_scores.reshape(-1, self.nclass),
+                batchs_labels,
+                avg_factor=num_pos)
 
-                loss_cls_bi = self.cls_loss(pred_cls[bi], target_cls)
-                loss_reg_bi = self.reg_loss(pred_reg[bi, pst_idx],
-                                            target_bbox,
-                                            anchors[0, pst_idx])
-                loss_cls.append(loss_cls_bi.sum()/torch.clamp(pst_idx.sum().float(), min=1.0))
-                loss_reg.append(loss_reg_bi.mean())
+            if num_pos > 0:
+                loss_bbox = self.loss_bbox(
+                    batchs_reg_preds.reshape(-1, 4)[pos_inds],
+                    batchs_bbox_targets[pos_inds],
+                    batchs_anchors[pos_inds])
+            else:
+                loss_bbox = torch.tensor(0).float().to(device)
 
-            return torch.stack(loss_cls).mean(dim=0, keepdim=True), \
-                torch.stack(loss_reg).mean(dim=0, keepdim=True)
+            return dict(
+                loss_cls=loss_cls,
+                loss_bbox=loss_bbox
+            )
 
         else:
-            transformed_anchors = self.regressBoxes(anchors, pred_reg)
-            transformed_anchors = self.clipBoxes(transformed_anchors, img_batch)
+            batchs_bbox_preds = self.regressBoxes(
+                anchors, batchs_reg_preds.reshape(num_imgs, -1, 4))
 
-            scores, class_id = torch.max(pred_cls.sigmoid(), dim=2, keepdim=True)
+            scores, classes = torch.max(
+                batchs_cls_scores.sigmoid(), dim=2, keepdim=True)
 
-            return scores.squeeze(2), class_id.squeeze(2), transformed_anchors
+            return scores.squeeze(2), classes.squeeze(2), batchs_bbox_preds
 
-    def _encode(self, anchors, annotation, resticts):
-        device = anchors.device
-        targets = torch.ones(anchors.shape[0], self.num_classes) * -1
-        targets = targets.to(device)
+    def retina_target(self, annotations, anchors, resticts, deivce):
+        labels_list, bbox_targets_list = [], []
+        for annotation in annotations:
+            labels, bbox_targets = self.retina_single_target(
+                annotation, anchors, resticts)
+            labels_list.append(labels.to(deivce))
+            bbox_targets_list.append(bbox_targets)
+
+        return labels_list, bbox_targets_list
+
+    def retina_single_target(self, annotation, anchors, resticts):
+        targets = torch.ones(anchors.shape[0],
+                             self.nclass,
+                             dtype=torch.long) * -1
 
         # num_anchors x num_annotations
         IoU = iou_cpu(anchors, annotation[:, :4])
@@ -138,31 +153,4 @@ class RetinaHead(nn.Module):
         targets[positive_indices, :] = 0
         targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
 
-        return targets, assigned_annotations[positive_indices, :4], positive_indices
-
-
-if __name__ == "__main__":
-    from configs.visdrone_chip import opt
-    model = RetinaNet(opt)
-    model = model.cuda()
-    model.eval()
-
-    for i in range(100):
-        with torch.no_grad():
-            input = torch.ones(1, 3, 320, 320).cuda()
-            out1, out2, out3 = model(input)
-    pass
-
-
-
-if __name__ == "__main__":
-    from configs.visdrone_chip import opt
-    model = RetinaNet(opt)
-    model = model.cuda()
-    model.eval()
-
-    for i in range(100):
-        with torch.no_grad():
-            input = torch.ones(1, 3, 320, 320).cuda()
-            out1, out2, out3 = model(input)
-    pass
+        return targets, assigned_annotations[:, :4]
