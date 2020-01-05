@@ -1,4 +1,4 @@
 pip install -r requirement.txt
-cd models/utils/nms
+cd models/utils/external
 make
 cd ../../../
