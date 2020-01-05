@@ -7,6 +7,115 @@ from ..utils import (Anchors, BBoxTransform, iou_cpu)
 # from models.losses.debug import FocalLoss
 
 
+class ClassificationModel(nn.Module):
+    def __init__(self, num_features_in, num_anchors=9, num_classes=80, prior=0.01, feature_size=256):
+        super(ClassificationModel, self).__init__()
+
+        self.num_classes = num_classes
+        self.num_anchors = num_anchors
+
+        self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.act1 = nn.ReLU()
+
+        self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act2 = nn.ReLU()
+
+        self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act3 = nn.ReLU()
+
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act4 = nn.ReLU()
+
+        self.output = nn.Conv2d(feature_size, num_anchors*num_classes, kernel_size=3, padding=1)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+        prior = 0.01
+        self.output.weight.data.fill_(0)
+        self.output.bias.data.fill_(-math.log((1.0-prior)/prior))
+
+    def forward(self, x):
+
+        out = self.conv1(x)
+        out = self.act1(out)
+
+        out = self.conv2(out)
+        out = self.act2(out)
+
+        out = self.conv3(out)
+        out = self.act3(out)
+
+        out = self.conv4(out)
+        out = self.act4(out)
+
+        out = self.output(out)
+
+        out1 = out.permute(0, 2, 3, 1)
+
+        batch_size, height, width, channels = out1.shape
+
+        out2 = out1.view(batch_size, height, width, self.num_anchors, self.num_classes)
+
+        return out2.contiguous().view(x.shape[0], -1, self.num_classes)
+
+
+class RegressionModel(nn.Module):
+    def __init__(self, num_features_in, num_anchors=9, feature_size=256):
+        super(RegressionModel, self).__init__()
+
+        self.conv1 = nn.Conv2d(num_features_in, feature_size, kernel_size=3, padding=1)
+        self.act1 = nn.ReLU()
+
+        self.conv2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act2 = nn.ReLU()
+
+        self.conv3 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act3 = nn.ReLU()
+
+        self.conv4 = nn.Conv2d(feature_size, feature_size, kernel_size=3, padding=1)
+        self.act4 = nn.ReLU()
+
+        self.output = nn.Conv2d(feature_size, num_anchors*4, kernel_size=3, padding=1)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
+                m.weight.data.normal_(0, math.sqrt(2. / n))
+            elif isinstance(m, nn.BatchNorm2d):
+                m.weight.data.fill_(1)
+                m.bias.data.zero_()
+
+        prior = 0.01
+        self.output.weight.data.fill_(0)
+        self.output.bias.data.fill_(-math.log((1.0-prior)/prior))
+
+    def forward(self, x):
+
+        out = self.conv1(x)
+        out = self.act1(out)
+
+        out = self.conv2(out)
+        out = self.act2(out)
+
+        out = self.conv3(out)
+        out = self.act3(out)
+
+        out = self.conv4(out)
+        out = self.act4(out)
+
+        out = self.output(out)
+
+        out = out.permute(0, 2, 3, 1)
+
+        return out.contiguous().view(out.shape[0], -1, 4)
+
+
 class RetinaHead(nn.Module):
     def __init__(self,
                  strides=[8, 16, 32, 64, 128],
@@ -26,117 +135,72 @@ class RetinaHead(nn.Module):
         self.nanchor = len(self.anchors)
         self.regressBoxes = BBoxTransform()
 
-        self.reg_convs = nn.Sequential(
-            nn.Conv2d(in_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU())
-        self.cls_convs = nn.Sequential(
-            nn.Conv2d(in_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU(),
-            nn.Conv2d(feat_channels, feat_channels, kernel_size=3, padding=1),
-            nn.ReLU())
-
-        self.retina_cls = nn.Conv2d(
-            feat_channels, self.nanchor*self.nclass, kernel_size=3, padding=1)
-        self.retina_reg = nn.Conv2d(
-            feat_channels, self.nanchor*4, kernel_size=3, padding=1)
-
+        self.retina_cls = ClassificationModel(num_features_in=256,
+                                              num_anchors=self.nanchor,
+                                              num_classes=self.nclass)
+        self.retina_reg = RegressionModel(num_features_in=256, num_anchors=9)
         self.loss_cls = build_loss(loss_cls)
         self.loss_bbox = build_loss(loss_bbox)
-
-        self.init_weights()
-
-    def init_weights(self):
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d):
-                n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-                m.weight.data.normal_(0, math.sqrt(2. / n))
-        prior = 0.01
-        for conv in [self.retina_cls, self.retina_reg]:
-            conv.weight.data.fill_(0)
-            conv.bias.data.fill_(-math.log((1.0-prior)/prior))
 
     def forward(self, inputs, annotations=None):
         device = inputs[0].device
         num_imgs = inputs[0].size(0)
-
-        cls_feats = [self.cls_convs(featmap) for featmap in inputs]
-        cls_scores = [self.retina_cls(featmap) for featmap in cls_feats]
-        reg_feats = [self.reg_convs(featmap) for featmap in inputs]
-        reg_preds = [self.retina_reg(featmap) for featmap in reg_feats]
-        featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
+        tensor_zero = torch.tensor(0).float().to(device)
+        featmap_sizes = [featmap.size()[-2:] for featmap in inputs]
         anchors, resticts = self.anchors(
-            featmap_sizes, dtype=reg_preds[0].dtype, device=device)
+            featmap_sizes, dtype=inputs[0].dtype, device=device)
 
-        batchs_cls_scores = torch.cat([
-            cls_score.permute(0, 2, 3, 1).reshape(
-                num_imgs, -1, self.nclass*self.nanchor)
-            for cls_score in cls_scores], dim=1)
-        batchs_reg_preds = torch.cat([
-            reg_pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 4*self.nanchor)
-            for reg_pred in reg_preds], dim=1)
+        pred_cls = torch.cat(
+            [self.retina_cls(featmap) for featmap in inputs], dim=1)
+        pred_reg = torch.cat(
+            [self.retina_reg(featmap) for featmap in inputs], dim=1)
 
         if self.training:
-            # return self.loss(pred_cls, pred_reg, anchors[0], annotations)
-            labels_list, bbox_targets_list = self.retina_target(
-                annotations, anchors, resticts, device)
-            batchs_labels = torch.cat(labels_list)
-            pos_inds = (batchs_labels > 0).max(dim=1)[0]
-            batchs_bbox_targets = torch.cat(bbox_targets_list)
-            batchs_anchors = anchors.repeat(num_imgs, 1)
+            # return self.loss(pred_cls, pred_reg, anchors, annotations)
+            loss_cls, loss_reg = [], []
 
-            num_pos = pos_inds.sum()
+            for bi in range(num_imgs):
+                annotation = annotations[bi]
+                annotation = annotation[annotation[:, 4] != -1]
+                if annotation.shape[0] == 0:
+                    loss_cls.append(tensor_zero)
+                    loss_reg.append(tensor_zero)
+                    continue
 
-            loss_cls = self.loss_cls(
-                batchs_cls_scores.reshape(-1, self.nclass),
-                batchs_labels,
-                avg_factor=num_pos)
+                target_cls, target_bbox, pst_idx = self._encode(anchors,
+                                                                annotation,
+                                                                resticts[0])
+                if pst_idx.sum() == 0:
+                    loss_cls.append(tensor_zero)
+                    loss_reg.append(tensor_zero)
+                    continue
 
-            if num_pos > 0:
-                loss_bbox = self.loss_bbox(
-                    batchs_reg_preds.reshape(-1, 4)[pos_inds],
-                    batchs_bbox_targets[pos_inds],
-                    batchs_anchors[pos_inds])
-            else:
-                loss_bbox = torch.tensor(0).float().to(device)
+                loss_cls_bi = self.loss_cls(pred_cls[bi], target_cls)
+                loss_reg_bi = self.loss_bbox(pred_reg[bi, pst_idx],
+                                             target_bbox,
+                                             anchors[pst_idx])
+                loss_cls.append(loss_cls_bi.sum() /
+                                torch.clamp(pst_idx.sum().float(), min=1.0))
+                loss_reg.append(loss_reg_bi.mean())
 
             return dict(
-                loss_cls=loss_cls,
-                loss_bbox=loss_bbox
+                loss_cls=torch.stack(loss_cls).mean(),
+                loss_reg=torch.stack(loss_reg).mean()
             )
 
         else:
-            batchs_bbox_preds = self.regressBoxes(
-                anchors, batchs_reg_preds.reshape(num_imgs, -1, 4))
+            transformed_anchors = self.regressBoxes(
+                anchors, pred_reg)
 
-            scores, classes = torch.max(
-                batchs_cls_scores.sigmoid(), dim=2, keepdim=True)
+            scores, class_id = torch.max(
+                pred_cls.sigmoid(), dim=2, keepdim=True)
 
-            return scores.squeeze(2), classes.squeeze(2), batchs_bbox_preds
+            return scores.squeeze(2), class_id.squeeze(2), transformed_anchors
 
-    def retina_target(self, annotations, anchors, resticts, deivce):
-        labels_list, bbox_targets_list = [], []
-        for annotation in annotations:
-            labels, bbox_targets = self.retina_single_target(
-                annotation, anchors, resticts)
-            labels_list.append(labels.to(deivce))
-            bbox_targets_list.append(bbox_targets)
-
-        return labels_list, bbox_targets_list
-
-    def retina_single_target(self, annotation, anchors, resticts):
-        targets = torch.ones(anchors.shape[0],
-                             self.nclass,
-                             dtype=torch.long) * -1
+    def _encode(self, anchors, annotation, resticts):
+        device = anchors.device
+        targets = torch.ones(anchors.shape[0], self.nclass) * -1
+        targets = targets.to(device)
 
         # num_anchors x num_annotations
         IoU = iou_cpu(anchors, annotation[:, :4])
@@ -151,6 +215,9 @@ class RetinaHead(nn.Module):
 
         targets[torch.lt(IoU_max, 0.4), :] = 0
         targets[positive_indices, :] = 0
-        targets[positive_indices, assigned_annotations[positive_indices, 4].long()] = 1
+        targets[positive_indices,
+                assigned_annotations[positive_indices, 4].long()] = 1
 
-        return targets, assigned_annotations[:, :4]
+        return targets, \
+            assigned_annotations[positive_indices, :4], \
+            positive_indices
