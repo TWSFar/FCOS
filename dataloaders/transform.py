@@ -137,9 +137,9 @@ class Augmenter(object):
 
 class Normalizer(object):
 
-    def __init__(self):
-        self.mean = np.array([[[0.485, 0.456, 0.406]]])
-        self.std = np.array([[[0.229, 0.224, 0.225]]])
+    def __init__(self, mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]):
+        self.mean = mean
+        self.std = std
 
     def __call__(self, sample):
 
@@ -166,3 +166,11 @@ class UnNormalizer(object):
         for t, m, s in zip(tensor, self.mean, self.std):
             t.mul_(s).add_(m)
         return tensor
+
+
+if __name__ == "__main__":
+    model = Normalizer()
+    img = np.random.rand(2, 2, 3)
+    sample = {"img": img, "annot": None}
+    temp = model(sample)
+    pass

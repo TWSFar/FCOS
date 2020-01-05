@@ -45,16 +45,18 @@ class VisdroneDataset(Dataset):
         self.max_size = opt.max_size
         self.input_size = (self.min_size, self.max_size)
         self.resize = self.resizes(opt.resize_type)
-        self.train_tsf = transforms.Compose([
-            tsf.Normalizer(),
-            tsf.Augmenter(),
-            self.resize
-        ])
 
-        self.test_tsf = transforms.Compose([
-            tsf.Normalizer(),
-            self.resize
-        ])
+        if self.train:
+            self.transform = transforms.Compose([
+                tsf.Normalizer(opt.mean, opt.std),
+                tsf.Augmenter(),
+                self.resize
+            ])
+        else:
+            self.transform = transforms.Compose([
+                tsf.Normalizer(opt.mean, opt.std),
+                self.resize
+            ])
 
     def resizes(self, resize_type):
         if resize_type == 'irregular':
@@ -88,10 +90,7 @@ class VisdroneDataset(Dataset):
         img = self.load_image(idx)
         annot = self.load_annotations(idx)
         sample = {'img': img, 'annot': annot}
-        if self.train:
-            sample = self.train_tsf(sample)
-        else:
-            sample = self.test_tsf(sample)
+        sample = self.transform(sample)
         sample['index'] = idx  # it is very import for val
 
         return sample

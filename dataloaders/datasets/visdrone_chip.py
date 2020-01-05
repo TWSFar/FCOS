@@ -45,16 +45,18 @@ class VisdroneDataset(Dataset):
         self.max_size = opt.max_size
         self.input_size = (self.min_size, self.max_size)
         self.resize = self.resizes(opt.resize_type)
-        self.train_tsf = transforms.Compose([
-            tsf.Normalizer(),
-            tsf.Augmenter(),
-            self.resize
-        ])
 
-        self.test_tsf = transforms.Compose([
-            tsf.Normalizer(),
-            self.resize
-        ])
+        if self.train:
+            self.transform = transforms.Compose([
+                tsf.Normalizer(opt.mean, opt.std),
+                tsf.Augmenter(),
+                self.resize
+            ])
+        else:
+            self.transform = transforms.Compose([
+                tsf.Normalizer(opt.mean, opt.std),
+                self.resize
+            ])
 
     def resizes(self, resize_type):
         if resize_type == 'irregular':
@@ -88,10 +90,7 @@ class VisdroneDataset(Dataset):
         img = self.load_image(idx)
         annot = self.load_annotations(idx)
         sample = {'img': img, 'annot': annot}
-        if self.train:
-            sample = self.train_tsf(sample)
-        else:
-            sample = self.test_tsf(sample)
+        sample = self.transform(sample)
         sample['index'] = idx  # it is very import for val
 
         # show image and labels
@@ -222,14 +221,8 @@ def show_image(img, labels):
 
 
 if __name__ == '__main__':
-    from easydict import EasyDict
     from torch.utils.data import DataLoader
-    opt = EasyDict()
-    opt.root_dir = '/home/twsf/data/Visdrone/detect_voc'
-    opt.batch_size = 2
-    opt.input_size = (846, 608)
-    opt.min_side = 608
-    opt.max_size = 1024
+    from configs.visdrone_chip import opt
     dataset = VisdroneDataset(opt)
     print(dataset.labels)
     sample = dataset.__getitem__(0)
