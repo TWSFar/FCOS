@@ -7,11 +7,11 @@ import numpy as np
 
 # from models_demo import model_demo
 
-# from configs.fcos_res50_visdrone import opt
+from configs.fcos_res50_visdrone import opt
 # from configs.visdrone_chip import opt
 # from configs.visdrone_samples import opt
 # from configs.coco import opt
-from configs.retina_visdrone import opt
+# from configs.retina_visdrone import opt
 
 from dataloaders import make_data_loader
 from models import Model
@@ -101,7 +101,7 @@ class Trainer(object):
             self.model.freeze_bn()
         epoch_loss = []
         for iter_num, data in enumerate(self.train_loader):
-            # if iter_num > 0: break
+            if iter_num > 3: break
             try:
                 temp_time = time.time()
                 self.optimizer.zero_grad()
@@ -114,7 +114,7 @@ class Trainer(object):
                 if bool(loss == 0):
                     continue
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), 3)
                 self.optimizer.step()
                 self.loss_hist.append(float(loss.cpu().item()))
                 epoch_loss.append(float(loss.cpu().item()))

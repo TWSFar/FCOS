@@ -175,13 +175,14 @@ class RetinaHead(nn.Module):
                     loss_reg.append(tensor_zero)
                     continue
 
-                loss_cls_bi = self.loss_cls(pred_cls[bi], target_cls)
+                loss_cls_bi = self.loss_cls(pred_cls[bi],
+                                            target_cls,
+                                            avg_factor=pst_idx.sum())
                 loss_reg_bi = self.loss_bbox(pred_reg[bi, pst_idx],
                                              target_bbox,
                                              anchors[pst_idx])
-                loss_cls.append(loss_cls_bi.sum() /
-                                torch.clamp(pst_idx.sum().float(), min=1.0))
-                loss_reg.append(loss_reg_bi.mean())
+                loss_cls.append(loss_cls_bi)
+                loss_reg.append(loss_reg_bi)
 
             return dict(
                 loss_cls=torch.stack(loss_cls).mean(),
