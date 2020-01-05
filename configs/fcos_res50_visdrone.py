@@ -9,53 +9,59 @@ class Config:
     # data
     dataset = "visdrone"
     root_dir = user_dir + "/data/Visdrone"
-    resume = False
     resize_type = "letterbox"  # [regular, irregular, letterbox]
     min_size = 1024
     max_size = 1024
+    mean = [0.373, 0.378, 0.365]
+    std = [0.192, 0.183, 0.194]
+    resume = False
     pre = None
 
     # model
-    strides = [8, 16, 32, 64, 128]
-    regions = [0, 64, 128, 256, 512, 99999]
-    center_offset_ratio = 1.5
     backbone = 'resnet50'
-    if 'hrnet' in backbone:
-        hrnet_cfg = user_dir + '/work/RetinaNet/lib/hrnet_config/hrnet_w48.yaml'
+    neck = "fpn"
+    head = dict(
+        type="FCOSHead",
+        strides=[8, 16, 32, 64, 128],
+        loss_cls=dict(
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=1.0),
+        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
+        loss_centerness=dict(
+            type='CrossEntropyLoss',
+            use_sigmoid=True,
+            loss_weight=1.0))
 
     # train
-    batch_size = 1
+    batch_size = 2
     epochs = 70
     workers = 1
+    freeze_bn = False
 
     # param for optimizer
-    adam = True
-    lr = 0.00005
+    adam = False
+    lr = 0.0002
     momentum = 0.9
-    decay = 5*1e-4
-    steps = [0.8, 0.9]
-    gamma = 0.3
+    decay = 0.0001
 
     # eval
     eval_type = "default"
-    # parameters
-    pst_thd = 0.05
-    nms_thd = 0.5
-    n_pre_nms = 4000
-    # nms: greedy_nms, soft_nms
-    nms_type = 'greedy_nms'
-
-    # loss
-    cls_loss = "focalloss"
-    reg_loss = "iou"
+    nms = dict(
+        type="GreedyNms",  # SoftNms
+        pst_thd=0.2,
+        nms_thd=0.5,
+        n_pre_nms=20000
+    )
 
     # visual
-    visualize = True
     print_freq = 50
     plot_every = 50  # every n batch plot
     saver_freq = 1
 
-    seed = int(time.time())
+    seed = 1
 
     def _parse(self, kwargs):
         state_dict = self._state_dict()

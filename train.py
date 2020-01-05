@@ -7,53 +7,54 @@ import numpy as np
 
 # from models_demo import model_demo
 
-# from configs.fcos.fcos_res50_coco import opt
 from configs.fcos_res50_visdrone import opt
-
-from models.fcos import FCOS
+# from configs.visdrone_chip import opt
+# from configs.visdrone_samples import opt
+# from configs.coco import opt
 
 from dataloaders import make_data_loader
-from models.utils.functions import PostProcess, DefaultEval, re_resize
-from utils.visualization import TensorboardSummary
-from utils.saver import Saver
-from utils.timer import Timer
+from models import Model
+from models.utils import (PostProcess, DefaultEval,
+                          re_resize, parse_losses)
+from utils import TensorboardSummary, Saver, Timer
 
 import torch
 import torch.optim as optim
-
 from pycocotools.cocoeval import COCOeval
 
 import multiprocessing
 multiprocessing.set_start_method('spawn', True)
+torch.manual_seed(opt.seed)
+torch.cuda.manual_seed(opt.seed)
 
 
 class Trainer(object):
     def __init__(self, mode):
         # Define Saver
         self.saver = Saver(opt, mode)
+
         # visualize
-        if opt.visualize:
-            self.summary = TensorboardSummary(self.saver.experiment_dir)
-            self.writer = self.summary.create_summary()
+        self.summary = TensorboardSummary(self.saver.experiment_dir, opt)
+        self.writer = self.summary.create_summary()
 
         # Define Dataloader
         # train dataset
         self.train_dataset, self.train_loader = make_data_loader(opt, train=True)
-        self.num_bt_tr = len(self.train_loader)
+        self.nbatch_train = len(self.train_loader)
         self.num_classes = self.train_dataset.num_classes
 
         # val dataset
         self.val_dataset, self.val_loader = make_data_loader(opt, train=False)
-        self.num_bt_val = len(self.val_loader)
+        self.nbatch_val = len(self.val_loader)
 
         # Define Network
         # initilize the network here.
-        self.model = FCOS(opt, self.num_classes)
+        self.model = Model(opt, self.num_classes)
         # self.model = RetinaNet(opt, self.num_classes)
         self.model = self.model.to(opt.device)
 
         # contain nms for val
-        self.post_pro = PostProcess(opt)
+        self.post_pro = PostProcess(**opt.nms)
 
         # Define Optimizer
         if opt.adam:
@@ -88,7 +89,7 @@ class Trainer(object):
                                                device_ids=opt.gpu_id)
 
         self.loss_hist = collections.deque(maxlen=500)
-        self.timer = Timer(opt.epochs, self.num_bt_tr, self.num_bt_val)
+        self.timer = Timer(opt.epochs, self.nbatch_train, self.nbatch_val)
         self.step_time = collections.deque(maxlen=opt.print_freq)
 
     def training(self, epoch):
@@ -99,31 +100,32 @@ class Trainer(object):
             self.model.freeze_bn()
         epoch_loss = []
         for iter_num, data in enumerate(self.train_loader):
-            # if iter_num > 3: break
+            if iter_num > 0: break
             try:
                 temp_time = time.time()
                 self.optimizer.zero_grad()
                 imgs = data['img'].to(opt.device)
                 targets = data['annot'].to(opt.device)
 
-                cls_loss, loc_loss = self.model([imgs, targets])
-
-                cls_loss = cls_loss.mean()
-                loc_loss = loc_loss.mean()
-                loss = cls_loss + loc_loss
+                losses = self.model(imgs, targets)
+                loss, log_vars = parse_losses(losses)
 
                 if bool(loss == 0):
                     continue
                 loss.backward()
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 0.1)
                 self.optimizer.step()
-                self.loss_hist.append(float(loss))
-                epoch_loss.append(float(loss))
+                self.loss_hist.append(float(loss.cpu().item()))
+                epoch_loss.append(float(loss.cpu().item()))
 
                 # visualize
-                global_step = iter_num + self.num_bt_tr * epoch + 1
-                self.writer.add_scalar('train/cls_loss', cls_loss.cpu().item(), global_step)
-                self.writer.add_scalar('train/loc_loss', loc_loss.cpu().item(), global_step)
+                global_step = iter_num + self.nbatch_train * epoch + 1
+                loss_logs = ""
+                for _key, _value in log_vars.items():
+                    loss_logs += "{}: {:.4f}, ".format(_key, _value)
+                    self.writer.add_scalar('train/{}'.format(_key),
+                                           _value,
+                                           global_step)
 
                 batch_time = time.time() - temp_time
                 eta = self.timer.eta(global_step, batch_time)
@@ -131,19 +133,15 @@ class Trainer(object):
                 if global_step % opt.print_freq == 0:
                     printline = ("Epoch: [{}][{}/{}]  "
                                  "lr: {}, eta: {}, time: {:1.3f}, "
-                                 "loss_cls: {:1.5f}, "
-                                 "loss_bbox: {:1.5f}, "
+                                 "{},"
                                  "Running loss: {:1.5f}").format(
-                                    epoch, iter_num + 1, self.num_bt_tr,
+                                    epoch, iter_num + 1, self.nbatch_train,
                                     self.optimizer.param_groups[0]['lr'],
                                     eta, np.sum(self.step_time),
-                                    float(cls_loss), float(loc_loss),
+                                    loss_logs,
                                     np.mean(self.loss_hist))
                     print(printline)
                     self.saver.save_experiment_log(printline)
-
-                del cls_loss
-                del loc_loss
 
             except Exception as e:
                 print(e)
@@ -159,7 +157,7 @@ class Trainer(object):
             results = []
             image_ids = []
             for ii, data in enumerate(self.val_loader):
-                # if ii > 3: break
+                if ii > 200: break
                 scale = data['scale']
                 index = data['index']
                 imgs = data['img'].to(opt.device).float()
@@ -183,7 +181,7 @@ class Trainer(object):
                     def_eval.statistics(outputs, targets, iou_thresh=0.5)
 
                 # visualize
-                global_step = ii + self.num_bt_val * epoch
+                global_step = ii + self.nbatch_val * epoch
                 if global_step % opt.plot_every == 0:
                     self.summary.visualize_image(
                         self.writer,
@@ -199,7 +197,6 @@ class Trainer(object):
                         pre_labs = labels_bt[jj]
 
                         if pre_bboxes.shape[0] > 0:
-                            # correct boxes for image scale
                             re_resize(pre_bboxes, scale, opt.resize_type)
 
                             # change to (x, y, w, h) (MS COCO standard)
@@ -319,7 +316,7 @@ def train(**kwargs):
 
         is_best = ap50 > trainer.best_pred
         trainer.best_pred = max(ap50, trainer.best_pred)
-        if (epoch % opt.saver_freq == 0) or is_best:
+        if (epoch % opt.saver_freq == 0 and epoch != 0) or is_best:
             trainer.saver.save_checkpoint({
                 'epoch': epoch,
                 'state_dict': trainer.model.module.state_dict() if len(opt.gpu_id) > 1
@@ -328,7 +325,8 @@ def train(**kwargs):
                 'optimizer': trainer.optimizer.state_dict(),
             }, is_best)
 
-    print("Train done!, Sum time: {}, Best result: {}".format(time.time()-start_time, train.best_pred))
+    all_time = trainer.timer.second2hour(time.time()-start_time)
+    print("Train done!, Sum time: {}, Best result: {}".format(all_time, trainer.best_pred))
 
     # cache result
     print("Backup result...")

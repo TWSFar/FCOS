@@ -16,19 +16,30 @@ class Config:
     pre = '/home/twsf/work/RetinaNet/run/visdrone_chip/20191123_115838/model_best.pth.tar'
 
     # model
-    strides = [8, 16, 32, 64, 128]
-    regions = [0, 64, 128, 256, 512, 99999]
-    center_offset_ratio = 1.5
     backbone = 'resnet50'
-    if 'hrnet' in backbone:
-        hrnet_cfg = user_dir + '/work/RetinaNet/lib/hrnet_config/hrnet_w48.yaml'
+    strides = [8, 16, 32, 64, 128]
+    # head
+    head = dict(
+        type="FCOSHead",
+        strides=[8, 16, 32, 64, 128],
+        loss_cls=dict(
+            type='FocalLoss',
+            use_sigmoid=True,
+            gamma=2.0,
+            alpha=0.25,
+            loss_weight=1.0),
+        loss_bbox=dict(type='IoULoss', loss_weight=1.0),
+        loss_centerness=dict(
+            type='CrossEntropyLoss',
+            use_sigmoid=True,
+            loss_weight=1.0))
 
     # train
     batch_size = 2
     epochs = 40
     workers = 1
 
-    # param for optimizer
+    # optimizer
     adam = True
     lr = 0.0002
     momentum = 0.9
@@ -38,15 +49,12 @@ class Config:
 
     # eval
     eval_type = "default"
-    # parameters
-    pst_thd = 0.05
-    nms_thd = 0.5
-    n_pre_nms = 20000
-    # nms: greedy_nms, soft_nms
-    nms_type = 'greedy_nms'
-
-    # loss
-    giou_loss = False
+    nms = dict(
+        type="GreedyNms",  # SoftNms
+        pst_thd=0.2,
+        nms_thd=0.5,
+        n_pre_nms=20000
+    )
 
     # visual
     visualize = True

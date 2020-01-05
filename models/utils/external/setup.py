@@ -7,8 +7,8 @@ from Cython.Build import cythonize
 extensions = [
     Extension("nms_gpu", ["nms_gpu.pyx"],
               extra_compile_args=["-Wno-cpp", "-Wno-unused-function"]),
-    # Extension("bbox_gpu", ["bbox_gpu.pyx"],
-    #           extra_compile_args=["-Wno-cpp", "-Wno-unused-function"])
+    Extension("iou_gpu", ["iou_gpu.pyx"],
+              extra_compile_args=["-Wno-cpp", "-Wno-unused-function"])
 ]
 
 

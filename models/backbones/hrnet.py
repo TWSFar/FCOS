@@ -15,11 +15,13 @@ import logging
 import torch
 import torch.nn as nn
 import torch._utils
+from yacs.config import CfgNode as CN
+user_dir = os.path.expanduser('~')
 
 BN_MOMENTUM = 0.1
 logger = logging.getLogger(__name__)
 
-user_dir = os.path.expanduser('~')
+model_cfg = "lib/hrnet_config/{}.yaml"
 model_path = {
     'hrnet_w18_c': '',
     'hrnet_w18_small_v1': '',
@@ -37,58 +39,6 @@ def conv3x3(in_planes, out_planes, stride=1):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
                      padding=1, bias=False)
-
-
-class Head(nn.Module):
-    def __init__(self, C2_size, C3_size, C4_size, C5_size, feature_size=256):
-        super(Head, self).__init__()
-
-        # P2
-        self.P2_1 = nn.Conv2d(C2_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P2_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
-
-        # P3
-        self.P3_1 = nn.Conv2d(C3_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P3_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
-
-        # P4
-        self.P4_1 = nn.Conv2d(C4_size, feature_size, kernel_size=1, stride=1, padding=0)
-        self.P4_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
-
-        # P5
-        self.P5_1 = nn.Conv2d(C5_size, feature_size, kernel_size=1, stride=1, padding=0)
-
-        # "P6 is obtained via a 3x3 stride-2 conv on C5"
-        self.P6 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
-
-        # "P6 is computed by applying ReLU followed by a 3x3 stride-2 conv on P6"
-        self.P7_1 = nn.ReLU()
-        self.P7_2 = nn.Conv2d(feature_size, feature_size, kernel_size=3, stride=2, padding=1)
-
-    def forward(self, inputs):
-
-        C2, C3, C4, C5 = inputs
-
-        P2_x = self.P2_1(C2)
-        P2_downsample = self.P2_2(P2_x)
-
-        P3_x = self.P3_1(C3)
-        P3_x = P2_downsample + P3_x
-        P3_downsample = self.P3_2(P3_x)
-
-        P4_x = self.P4_1(C4)
-        P4_x = P4_x + P3_downsample
-        P4_downsample = self.P4_2(P4_x)
-
-        P5_x = self.P5_1(C5)
-        P5_x = P5_x + P4_downsample
-
-        P6_x = self.P6(P5_x)
-
-        P7_x = self.P7_1(P6_x)
-        P7_x = self.P7_2(P7_x)
-
-        return [P3_x, P4_x, P5_x, P6_x, P7_x]
 
 
 class BasicBlock(nn.Module):
@@ -362,8 +312,7 @@ class HRNet(nn.Module):
         self.stage4, pre_stage_channels = self._make_stage(
             self.stage4_cfg, num_channels, multi_scale_output=True)
 
-        C1, C2, C3, C4 = pre_stage_channels
-        self.head = Head(C1, C2, C3, C4)
+        self.out_planes = pre_stage_channels
 
     def _make_transition_layer(
             self, num_channels_pre_layer, num_channels_cur_layer):
@@ -481,7 +430,7 @@ class HRNet(nn.Module):
                 x_list.append(y_list[i])
         y_list = self.stage4(x_list)
 
-        return self.head(y_list)
+        return y_list
 
     def init_weights(self, pretrained='',):
         logger.info('=> init weights from normal distribution')
@@ -506,7 +455,14 @@ class HRNet(nn.Module):
             self.load_state_dict(model_dict)
 
 
-def hrnet(cfg):
+def hrnet(NAME):
+    cfg = CN()
+    cfg.NAME = NAME
+    cfg.MODEL = CN(new_allowed=True)
+    cfg.defrost()
+    hrnet_cfg = model_cfg.format(NAME)
+    cfg.merge_from_file(hrnet_cfg)
+    cfg.freeze()
     model = HRNet(cfg)
     pretrained = os.path.join(user_dir, model_path[cfg['NAME']])
     model.init_weights(pretrained)
@@ -514,14 +470,7 @@ def hrnet(cfg):
 
 
 if __name__ == "__main__":
-    from yacs.config import CfgNode as CN
-    _C = CN()
-    _C.MODEL = CN(new_allowed=True)
-    _C.defrost()
-    _C.NAME = 'hrnet_w18_small_v2'
-    _C.merge_from_file('/home/twsf/work/RetinaNet/lib/hrnet_config/hrnet_w18_small_v2.yaml')
-    _C.freeze()
-    model = hrnet(_C)
+    model = hrnet("hrnet_w48")
     input = torch.rand(2, 3, 512, 512)
     output = model(input)
     pass

@@ -48,9 +48,9 @@ def plot_img(img, bboxes, id2name):
 
 
 class TensorboardSummary(object):
-    def __init__(self, directory):
+    def __init__(self, directory, opt):
         self.directory = directory
-        self.unnor = UnNormalizer()
+        self.unnor = UnNormalizer(opt.mean, opt.std)
 
     def create_summary(self):
         writer = SummaryWriter(log_dir=os.path.join(self.directory))
