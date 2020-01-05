@@ -29,7 +29,7 @@ class Config:
             use_sigmoid=True,
             gamma=2.0,
             alpha=0.25,
-            reduction='mean',
+            reduction='sum',
             loss_weight=1.0),
         loss_bbox=dict(
             type='CIoULoss')
