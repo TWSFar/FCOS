@@ -1,5 +1,5 @@
-# RetinaNet
-复现RetinaNet, 仅仅支持coco2017数据集
+# FCOS
+复现FCOS
 
 ## result
 待更... 
