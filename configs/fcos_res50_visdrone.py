@@ -54,7 +54,7 @@ class Config:
         type="GreedyNms",  # SoftNms
         pst_thd=0.2,
         nms_thd=0.5,
-        n_pre_nms=20000
+        n_pre_nms=4000
     )
 
     # visual

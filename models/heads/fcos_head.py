@@ -75,8 +75,6 @@ class FCOSHead(nn.Module):
         normal_init(self.fcos_centerness, std=0.01)
 
     def forward(self, inputs, annotations=None):
-        import time
-        time1 = time.time()
         cls_feats = [self.cls_convs(featmap) for featmap in inputs]
         cls_scores = [self.fcos_cls(featmap) for featmap in cls_feats]
         centernesses = [self.fcos_centerness(featmap) for featmap in cls_feats]
@@ -150,7 +148,6 @@ class FCOSHead(nn.Module):
                 loss_centerness=loss_centerness)
 
         else:
-            time2 = time.time()
             flatten_cls_scores = torch.cat([
                 cls_score.permute(0, 2, 3, 1).reshape(
                     num_imgs, -1, self.nclass).sigmoid()
@@ -170,9 +167,6 @@ class FCOSHead(nn.Module):
                 for flatten_bbox_pred in flatten_bbox_preds
             ]
             reg_preds = torch.stack(reg_preds)  # (b, shw)
-            time3 = time.time()
-            print("head 1-2: {}".format(time2-time1))
-            print("head 2-3: {}".format(time3-time2))
             return score_preds, class_preds, reg_preds
 
     def distance2bbox(self, points, distance):

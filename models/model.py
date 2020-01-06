@@ -26,18 +26,13 @@ class Model(nn.Module):
                 layer.eval()
 
     def forward(self, imgs, targets=None):
-        import time
-        time1 = time.time()
         featmaps = self.backbone(imgs)
-        time2 = time.time()
         featmaps = self.neck(featmaps)
-        time3 = time.time()
         if self.training:
             return self.head(featmaps, targets)
         else:
-            print("1-2: {}".format(time2-time1))
-            print("2-3: {}".format(time3-time2))
             return self.head(featmaps)
+
 
 if __name__ == "__main__":
     from configs.fcos_res50_coco import opt
