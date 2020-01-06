@@ -37,7 +37,7 @@ class Config:
             loss_weight=1.0))
 
     # train
-    batch_size = 2
+    batch_size = 6
     epochs = 70
     workers = 1
     freeze_bn = False
