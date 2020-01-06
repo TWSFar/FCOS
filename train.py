@@ -101,7 +101,7 @@ class Trainer(object):
             self.model.freeze_bn()
         epoch_loss = []
         for iter_num, data in enumerate(self.train_loader):
-            if iter_num > 3: break
+            # if iter_num > 3: break
             try:
                 temp_time = time.time()
                 self.optimizer.zero_grad()
@@ -165,7 +165,10 @@ class Trainer(object):
                 targets = data['annot']
 
                 # run network
+                time1 = time.time()
                 scores, labels, boxes = self.model(imgs)
+                time2 = time.time()
+                print("t2 - t1: {}".format(time2 - time1))
 
                 scores_bt, labels_bt, boxes_bt = self.post_pro(
                     scores, labels, boxes, imgs.shape[-2:])
