@@ -338,4 +338,4 @@ def train(**kwargs):
 
 if __name__ == '__main__':
     # train()
-    fire.Fire(train)
+    fire.Fire()
