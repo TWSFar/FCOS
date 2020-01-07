@@ -52,9 +52,9 @@ class Config:
     eval_type = "default"
     nms = dict(
         type="GreedyNms",  # SoftNms
-        pst_thd=0.05,
+        pst_thd=0.01,
         nms_thd=0.5,
-        n_pre_nms=4000
+        n_pre_nms=6000
     )
 
     # visual
